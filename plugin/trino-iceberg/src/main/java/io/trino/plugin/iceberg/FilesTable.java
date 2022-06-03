@@ -47,7 +47,7 @@ public class FilesTable
         if (snapshotId.isEmpty()) {
             return new FixedPageSource(ImmutableList.of());
         }
-        return new FixedPageSource(buildPages(getIcebergTable()));
+        return super.pageSource(transactionHandle, session, constraint);
     }
 
     @Override

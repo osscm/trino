@@ -13,12 +13,7 @@
  */
 package io.trino.plugin.iceberg;
 
-import io.trino.spi.connector.ConnectorPageSource;
-import io.trino.spi.connector.ConnectorSession;
-import io.trino.spi.connector.ConnectorTransactionHandle;
-import io.trino.spi.connector.FixedPageSource;
 import io.trino.spi.connector.SchemaTableName;
-import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.type.TypeManager;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableScan;
@@ -32,12 +27,6 @@ public class AllFilesTable
     public AllFilesTable(SchemaTableName tableName, TypeManager typeManager, Table icebergTable)
     {
         super(tableName, typeManager, icebergTable);
-    }
-
-    @Override
-    public ConnectorPageSource pageSource(ConnectorTransactionHandle transactionHandle, ConnectorSession session, TupleDomain<Integer> constraint)
-    {
-        return new FixedPageSource(buildPages(getIcebergTable()));
     }
 
     @Override

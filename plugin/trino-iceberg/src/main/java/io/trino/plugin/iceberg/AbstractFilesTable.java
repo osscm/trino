@@ -19,9 +19,14 @@ import io.airlift.slice.Slices;
 import io.trino.plugin.iceberg.util.PageListBuilder;
 import io.trino.spi.Page;
 import io.trino.spi.connector.ColumnMetadata;
+import io.trino.spi.connector.ConnectorPageSource;
+import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.connector.ConnectorTableMetadata;
+import io.trino.spi.connector.ConnectorTransactionHandle;
+import io.trino.spi.connector.FixedPageSource;
 import io.trino.spi.connector.SchemaTableName;
 import io.trino.spi.connector.SystemTable;
+import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.type.ArrayType;
 import io.trino.spi.type.TypeManager;
 import org.apache.iceberg.DataFile;
@@ -55,8 +60,16 @@ public abstract class AbstractFilesTable
 
     public AbstractFilesTable(SchemaTableName tableName, TypeManager typeManager, Table icebergTable)
     {
-        this.icebergTable = requireNonNull(icebergTable, "icebergTable is null");
+        requireNonNull(tableName, "tableName is null");
+        requireNonNull(typeManager, "typeManager is null");
         this.tableMetadata = tableMetadata(tableName, typeManager);
+        this.icebergTable = requireNonNull(icebergTable, "icebergTable is null");
+    }
+
+    @Override
+    public ConnectorPageSource pageSource(ConnectorTransactionHandle transactionHandle, ConnectorSession session, TupleDomain<Integer> constraint)
+    {
+        return new FixedPageSource(buildPages());
     }
 
     @Override
@@ -71,21 +84,6 @@ public abstract class AbstractFilesTable
         return tableMetadata;
     }
 
-    protected List<Page> buildPages(Table icebergTable)
-    {
-        PageListBuilder pagesBuilder = PageListBuilder.forTable(getTableMetadata());
-        Map<Integer, Type> idToTypeMapping = getIcebergIdToTypeMapping(icebergTable.schema());
-        TableScan tableScan = buildTableScan();
-
-        tableScan.planFiles().forEach(fileScanTask -> {
-            DataTask dataTask = (DataTask) fileScanTask;
-
-            dataTask.rows().forEach(structLike -> addRow(pagesBuilder, idToTypeMapping, structLike));
-        });
-
-        return pagesBuilder.build();
-    }
-
     protected abstract TableScan buildTableScan();
 
     protected Table getIcebergTable()
@@ -93,7 +91,7 @@ public abstract class AbstractFilesTable
         return icebergTable;
     }
 
-    protected ConnectorTableMetadata tableMetadata(SchemaTableName tableName, TypeManager typeManager)
+    private ConnectorTableMetadata tableMetadata(SchemaTableName tableName, TypeManager typeManager)
     {
         return new ConnectorTableMetadata(requireNonNull(tableName, "tableName is null"),
                 ImmutableList.<ColumnMetadata>builder()
@@ -114,7 +112,21 @@ public abstract class AbstractFilesTable
                         .build());
     }
 
-    protected void addRow(PageListBuilder pagesBuilder, Map<Integer, Type> idToTypeMapping, StructLike structLike)
+    private List<Page> buildPages()
+    {
+        PageListBuilder pagesBuilder = PageListBuilder.forTable(getTableMetadata());
+        Map<Integer, Type> idToTypeMapping = getIcebergIdToTypeMapping(icebergTable.schema());
+        TableScan tableScan = buildTableScan();
+
+        tableScan.planFiles().forEach(fileScanTask -> {
+            DataTask dataTask = (DataTask) fileScanTask;
+            dataTask.rows().forEach(structLike -> addRow(pagesBuilder, idToTypeMapping, structLike));
+        });
+
+        return pagesBuilder.build();
+    }
+
+    private static void addRow(PageListBuilder pagesBuilder, Map<Integer, Type> idToTypeMapping, StructLike structLike)
     {
         DataFile dataFile = (DataFile) structLike;
 
@@ -165,7 +177,7 @@ public abstract class AbstractFilesTable
         pagesBuilder.endRow();
     }
 
-    protected boolean checkNonNull(Object object, PageListBuilder pagesBuilder)
+    private static boolean checkNonNull(Object object, PageListBuilder pagesBuilder)
     {
         if (object == null) {
             pagesBuilder.appendNull();
@@ -174,7 +186,7 @@ public abstract class AbstractFilesTable
         return true;
     }
 
-    protected Map<Integer, Type> getIcebergIdToTypeMapping(Schema schema)
+    private static Map<Integer, Type> getIcebergIdToTypeMapping(Schema schema)
     {
         ImmutableMap.Builder<Integer, Type> icebergIdToTypeMapping = ImmutableMap.builder();
         for (Types.NestedField field : schema.columns()) {
@@ -183,7 +195,7 @@ public abstract class AbstractFilesTable
         return icebergIdToTypeMapping.buildOrThrow();
     }
 
-    private void populateIcebergIdToTypeMapping(Types.NestedField field, ImmutableMap.Builder<Integer, Type> icebergIdToTypeMapping)
+    private static void populateIcebergIdToTypeMapping(Types.NestedField field, ImmutableMap.Builder<Integer, Type> icebergIdToTypeMapping)
     {
         Type type = field.type();
         icebergIdToTypeMapping.put(field.fieldId(), type);
