@@ -42,6 +42,7 @@ public class IcebergTableProperties
 {
     public static final String FILE_FORMAT_PROPERTY = "format";
     public static final String PARTITIONING_PROPERTY = "partitioning";
+    public static final String SORTED_BY_PROPERTY = "sorted_by";
     public static final String LOCATION_PROPERTY = "location";
     public static final String FORMAT_VERSION_PROPERTY = "format_version";
     public static final String ORC_BLOOM_FILTER_COLUMNS = "orc_bloom_filter_columns";
@@ -71,6 +72,15 @@ public class IcebergTableProperties
                         value -> ((Collection<?>) value).stream()
                                 .map(name -> ((String) name).toLowerCase(ENGLISH))
                                 .collect(toImmutableList()),
+                        value -> value))
+                .add(new PropertyMetadata<>(
+                        SORTED_BY_PROPERTY,
+                        "Sorted columns",
+                        new ArrayType(VARCHAR),
+                        List.class,
+                        ImmutableList.of(),
+                        false,
+                        value -> (List<?>) value,
                         value -> value))
                 .add(stringProperty(
                         LOCATION_PROPERTY,
@@ -118,6 +128,13 @@ public class IcebergTableProperties
     public static List<String> getPartitioning(Map<String, Object> tableProperties)
     {
         List<String> partitioning = (List<String>) tableProperties.get(PARTITIONING_PROPERTY);
+        return partitioning == null ? ImmutableList.of() : ImmutableList.copyOf(partitioning);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static List<String> getSortOrder(Map<String, Object> tableProperties)
+    {
+        List<String> partitioning = (List<String>) tableProperties.get(SORTED_BY_PROPERTY);
         return partitioning == null ? ImmutableList.of() : ImmutableList.copyOf(partitioning);
     }
 
