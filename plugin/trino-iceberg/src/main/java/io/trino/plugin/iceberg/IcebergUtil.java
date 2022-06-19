@@ -134,6 +134,7 @@ import static java.lang.Float.parseFloat;
 import static java.lang.Long.parseLong;
 import static java.lang.String.format;
 import static java.util.Comparator.comparing;
+import static java.util.Locale.ENGLISH;
 import static java.util.Objects.requireNonNull;
 import static org.apache.iceberg.BaseMetastoreTableOperations.ICEBERG_TABLE_TYPE_VALUE;
 import static org.apache.iceberg.BaseMetastoreTableOperations.TABLE_TYPE_PROP;
@@ -151,7 +152,11 @@ import static org.apache.iceberg.types.Type.TypeID.FIXED;
 
 public final class IcebergUtil
 {
-    private static final Pattern SIMPLE_NAME = Pattern.compile("[a-z][a-z0-9]*");
+    private static final String UNQUOTED_IDENTIFIER = "[a-z_][a-z0-9_]*";
+    private static final String QUOTED_IDENTIFIER = "\"(?:\"\"|[^\"])*\"";
+    public static final String IDENTIFIER = "(" + UNQUOTED_IDENTIFIER + "|" + QUOTED_IDENTIFIER + ")";
+    private static final Pattern UNQUOTED_IDENTIFIER_PATTERN = Pattern.compile(UNQUOTED_IDENTIFIER);
+    private static final Pattern QUOTED_IDENTIFIER_PATTERN = Pattern.compile(QUOTED_IDENTIFIER);
 
     private IcebergUtil() {}
 
@@ -324,10 +329,33 @@ public final class IcebergUtil
 
     private static String quotedName(String name)
     {
-        if (SIMPLE_NAME.matcher(name).matches()) {
+        if (UNQUOTED_IDENTIFIER_PATTERN.matcher(name).matches()) {
             return name;
         }
         return '"' + name.replace("\"", "\"\"") + '"';
+    }
+
+    public static String fromColumnToIdentifier(String column)
+    {
+        return quotedName(column);
+    }
+
+    public static String fromIdentifierToColumn(String identifier)
+    {
+        if (QUOTED_IDENTIFIER_PATTERN.matcher(identifier).matches()) {
+            // We only support lowercase quoted identifiers for now.
+            // See https://github.com/trinodb/trino/issues/12226#issuecomment-1128839259
+            // TODO: Enhance quoted identifiers support in Iceberg partitioning to support mixed case identifiers
+            //  See https://github.com/trinodb/trino/issues/12668
+            if (!identifier.toLowerCase(ENGLISH).equals(identifier)) {
+                throw new IllegalArgumentException(format("Uppercase characters in identifier '%s' are not supported.", identifier));
+            }
+            return identifier.substring(1, identifier.length() - 1).replace("\"\"", "\"");
+        }
+        // Currently, all Iceberg columns are stored in lowercase in the Iceberg metadata files.
+        // Unquoted identifiers are canonicalized to lowercase here which is not according ANSI SQL spec.
+        // See https://github.com/trinodb/trino/issues/17
+        return identifier.toLowerCase(ENGLISH);
     }
 
     public static boolean canEnforceColumnConstraintInAllSpecs(TypeOperators typeOperators, Table table, IcebergColumnHandle columnHandle, Domain domain)

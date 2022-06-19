@@ -650,7 +650,8 @@ public abstract class BaseIcebergConnectorTest
                 "  a_uuid uuid, " +
                 "  a_row row(id integer , vc varchar), " +
                 "  an_array array(varchar), " +
-                "  a_map map(integer, varchar) " +
+                "  a_map map(integer, varchar), " +
+                "  \"a quoted, field\" varchar" +
                 ") " +
                 "WITH (" +
                 "partitioning = ARRAY[" +
@@ -667,7 +668,8 @@ public abstract class BaseIcebergConnectorTest
                 "  'a_time', " +
                 "  'a_timestamp', " +
                 "  'a_timestamptz', " +
-                "  'a_uuid' " +
+                "  'a_uuid', " +
+                "  '\"a quoted, field\"' " +
                 // Note: partitioning on non-primitive columns is not allowed in Iceberg
                 "  ]" +
                 ")");
@@ -691,9 +693,10 @@ public abstract class BaseIcebergConnectorTest
                 "UUID '20050910-1330-11e9-ffff-2a86e4085a59', " +
                 "CAST(ROW(42, 'this is a random value') AS ROW(id int, vc varchar)), " +
                 "ARRAY[VARCHAR 'uno', 'dos', 'tres'], " +
-                "map(ARRAY[1,2], ARRAY['ek', VARCHAR 'one'])) ";
+                "map(ARRAY[1,2], ARRAY['ek', VARCHAR 'one']), " +
+                "VARCHAR 'tralala')";
 
-        String nullValues = nCopies(17, "NULL").stream()
+        String nullValues = nCopies(18, "NULL").stream()
                 .collect(joining(", ", "VALUES (", ")"));
 
         assertUpdate("INSERT INTO test_partitioned_table " + values, 1);
@@ -722,6 +725,7 @@ public abstract class BaseIcebergConnectorTest
                 "AND a_row = CAST(ROW(42, 'this is a random value') AS ROW(id int, vc varchar)) " +
                 "AND an_array = ARRAY[VARCHAR 'uno', 'dos', 'tres'] " +
                 "AND a_map = map(ARRAY[1,2], ARRAY['ek', VARCHAR 'one']) " +
+                "AND \"a quoted, field\" = VARCHAR 'tralala' " +
                 ""))
                 .matches(values);
 
@@ -743,6 +747,7 @@ public abstract class BaseIcebergConnectorTest
                 "AND a_row IS NULL " +
                 "AND an_array IS NULL " +
                 "AND a_map IS NULL " +
+                "AND \"a quoted, field\" IS NULL " +
                 ""))
                 .skippingTypesCheck()
                 .matches(nullValues);
@@ -768,6 +773,7 @@ public abstract class BaseIcebergConnectorTest
                             "  ('a_row', NULL, NULL, 0.5, NULL, NULL, NULL), " +
                             "  ('an_array', NULL, NULL, 0.5, NULL, NULL, NULL), " +
                             "  ('a_map', NULL, NULL, 0.5, NULL, NULL, NULL), " +
+                            "  ('a quoted, field', NULL, NULL, 0.5, NULL, NULL, NULL), " +
                             "  (NULL, NULL, NULL, NULL, 2e0, NULL, NULL)");
         }
         else {
@@ -791,6 +797,7 @@ public abstract class BaseIcebergConnectorTest
                             "  ('a_row', NULL, NULL, NULL, NULL, NULL, NULL), " +
                             "  ('an_array', NULL, NULL, NULL, NULL, NULL, NULL), " +
                             "  ('a_map', NULL, NULL, NULL, NULL, NULL, NULL), " +
+                            "  ('a quoted, field', 83e0, NULL, 0.5e0, NULL, NULL, NULL), " +
                             "  (NULL, NULL, NULL, NULL, 2e0, NULL, NULL)");
         }
 
@@ -815,7 +822,8 @@ public abstract class BaseIcebergConnectorTest
                 "  partition.a_time, " +
                 "  partition.a_timestamp, " +
                 "  partition.a_timestamptz, " +
-                "  partition.a_uuid " +
+                "  partition.a_uuid, " +
+                "  partition.\"a quoted, field\" " +
                 // Note: partitioning on non-primitive columns is not allowed in Iceberg
                 " FROM \"test_partitioned_table$partitions\" "))
                 .matches("" +
@@ -835,7 +843,8 @@ public abstract class BaseIcebergConnectorTest
                         "  TIME '02:43:57.987654', " +
                         "  TIMESTAMP '2021-07-24 03:43:57.987654'," +
                         "  TIMESTAMP '2021-07-24 04:43:57.987654 UTC', " +
-                        "  UUID '20050910-1330-11e9-ffff-2a86e4085a59' " +
+                        "  UUID '20050910-1330-11e9-ffff-2a86e4085a59', " +
+                        "  VARCHAR 'tralala' " +
                         ")" +
                         "UNION ALL " +
                         "VALUES (" +
@@ -854,7 +863,8 @@ public abstract class BaseIcebergConnectorTest
                         "  NULL, " +
                         "  NULL, " +
                         "  NULL, " +
-                        "  NULL " +
+                        "  NULL, " +
+                        "  NULL  " +
                         ")");
 
         assertUpdate("DROP TABLE test_partitioned_table");
@@ -886,10 +896,10 @@ public abstract class BaseIcebergConnectorTest
                         "WITH (" +
                         "format_version = 2," +
                         "location = '" + tempDirPath + "', " +
-                        "partitioning = ARRAY['ORDER_STATUS', 'Ship_Priority', 'Bucket(order_key,9)']" +
+                        "partitioning = ARRAY['ORDER_STATUS', 'Ship_Priority', 'Bucket(\"order key\",9)']" +
                         ") " +
                         "AS " +
-                        "SELECT orderkey AS order_key, shippriority AS ship_priority, orderstatus AS order_status " +
+                        "SELECT orderkey AS \"order key\", shippriority AS ship_priority, orderstatus AS order_status " +
                         "FROM tpch.tiny.orders",
                 "SELECT count(*) from orders");
 
@@ -897,7 +907,7 @@ public abstract class BaseIcebergConnectorTest
                 computeScalar("SHOW CREATE TABLE test_create_partitioned_table_as"),
                 format(
                         "CREATE TABLE %s.%s.%s (\n" +
-                                "   order_key bigint,\n" +
+                                "   \"order key\" bigint,\n" +
                                 "   ship_priority integer,\n" +
                                 "   order_status varchar\n" +
                                 ")\n" +
@@ -905,7 +915,7 @@ public abstract class BaseIcebergConnectorTest
                                 "   format = '%s',\n" +
                                 "   format_version = 2,\n" +
                                 "   location = '%s',\n" +
-                                "   partitioning = ARRAY['order_status','ship_priority','bucket(order_key, 9)']\n" +
+                                "   partitioning = ARRAY['order_status','ship_priority','bucket(\"order key\", 9)']\n" +
                                 ")",
                         getSession().getCatalog().orElseThrow(),
                         getSession().getSchema().orElseThrow(),
@@ -916,6 +926,43 @@ public abstract class BaseIcebergConnectorTest
         assertQuery("SELECT * from test_create_partitioned_table_as", "SELECT orderkey, shippriority, orderstatus FROM orders");
 
         dropTable("test_create_partitioned_table_as");
+    }
+
+    @DataProvider(name = "partitionedTableWithQuotedIdentifierCasing")
+    public static Object[][] partitionedTableWithQuotedIdentifierCasing()
+    {
+        return new Object[][] {
+                {"x", "x", true},
+                {"X", "x", true},
+                {"\"x\"", "x", true},
+                {"\"X\"", "x", true},
+                {"x", "\"x\"", true},
+                {"X", "\"x\"", true},
+                {"\"x\"", "\"x\"", true},
+                {"\"X\"", "\"x\"", true},
+                {"x", "X", true},
+                {"X", "X", true},
+                {"\"x\"", "X", true},
+                {"\"X\"", "X", true},
+                {"x", "\"X\"", false},
+                {"X", "\"X\"", false},
+                {"\"x\"", "\"X\"", false},
+                {"\"X\"", "\"X\"", false},
+        };
+    }
+
+    @Test(dataProvider = "partitionedTableWithQuotedIdentifierCasing")
+    public void testCreatePartitionedTableWithQuotedIdentifierCasing(String columnName, String partitioningField, boolean success)
+    {
+        String tableName = "partitioning_" + randomTableSuffix();
+        @Language("SQL") String sql = format("CREATE TABLE %s (%s bigint) WITH (partitioning = ARRAY['%s'])", tableName, columnName, partitioningField);
+        if (success) {
+            assertThat(query(sql)).matches("VALUES (true)");
+            dropTable(tableName);
+        }
+        else {
+            assertQueryFails(sql, "Unable to parse partitioning value: .*");
+        }
     }
 
     @Test

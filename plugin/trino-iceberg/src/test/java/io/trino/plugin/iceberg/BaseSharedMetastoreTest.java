@@ -167,7 +167,7 @@ public abstract class BaseSharedMetastoreTest
             assertQueryFails(format("SELECT * FROM hive_with_redirections.%s.nation_test FOR VERSION AS OF %d", testLocalSchema, incorrectSnapshot), "Iceberg snapshot ID does not exists: " + incorrectSnapshot);
             assertQueryFails(
                     format("SELECT * FROM hive_with_redirections.%s.nation_test FOR TIMESTAMP AS OF TIMESTAMP '1970-01-01 00:00:00.001000000 Z'", testLocalSchema),
-                    format("\\QNo version history table \"%s\".\"nation_test\" at or before 1970-01-01T00:00:00.001Z", testLocalSchema));
+                    format("\\QNo version history table %s.nation_test at or before 1970-01-01T00:00:00.001Z", testLocalSchema));
             assertQueryFails(
                     format("SELECT * FROM iceberg_with_redirections.%s.region FOR TIMESTAMP AS OF TIMESTAMP '1970-01-01 00:00:00.001000000 Z'", schema),
                     "\\QThis connector does not support versioned tables");
