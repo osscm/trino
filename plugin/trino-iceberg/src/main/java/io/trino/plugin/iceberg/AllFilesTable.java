@@ -13,7 +13,6 @@
  */
 package io.trino.plugin.iceberg;
 
-import com.google.common.collect.ImmutableList;
 import io.trino.spi.connector.ConnectorPageSource;
 import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.connector.ConnectorTransactionHandle;
@@ -24,40 +23,30 @@ import io.trino.spi.type.TypeManager;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableScan;
 
-import java.util.Optional;
-
-import static java.util.Objects.requireNonNull;
-import static org.apache.iceberg.MetadataTableType.FILES;
+import static org.apache.iceberg.MetadataTableType.ALL_DATA_FILES;
 import static org.apache.iceberg.MetadataTableUtils.createMetadataTableInstance;
 
-public class FilesTable
+public class AllFilesTable
         extends AbstractFilesTable
 {
-    private final Optional<Long> snapshotId;
-
-    public FilesTable(SchemaTableName tableName, TypeManager typeManager, Table icebergTable, Optional<Long> snapshotId)
+    public AllFilesTable(SchemaTableName tableName, TypeManager typeManager, Table icebergTable)
     {
         super(tableName, typeManager, icebergTable);
-        this.snapshotId = requireNonNull(snapshotId, "snapshotId is null");
     }
 
     @Override
     public ConnectorPageSource pageSource(ConnectorTransactionHandle transactionHandle, ConnectorSession session, TupleDomain<Integer> constraint)
     {
-        if (snapshotId.isEmpty()) {
-            return new FixedPageSource(ImmutableList.of());
-        }
         return new FixedPageSource(buildPages(getIcebergTable()));
     }
 
     @Override
     protected TableScan buildTableScan()
     {
-        Table filesTable = createMetadataTableInstance(getIcebergTable(), FILES);
+        Table filesTable = createMetadataTableInstance(getIcebergTable(), ALL_DATA_FILES);
 
         TableScan tableScan = filesTable
                 .newScan()
-                .useSnapshot(snapshotId.get())
                 .includeColumnStats();
         return tableScan;
     }
