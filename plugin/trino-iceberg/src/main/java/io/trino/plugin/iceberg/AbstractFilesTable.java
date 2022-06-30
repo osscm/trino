@@ -114,7 +114,7 @@ public abstract class AbstractFilesTable
 
     private List<Page> buildPages()
     {
-        PageListBuilder pagesBuilder = PageListBuilder.forTable(getTableMetadata());
+        PageListBuilder pagesBuilder = PageListBuilder.forTable(tableMetadata);
         Map<Integer, Type> idToTypeMapping = getIcebergIdToTypeMapping(icebergTable.schema());
         TableScan tableScan = buildTableScan();
 
