@@ -41,7 +41,7 @@ import static io.trino.testing.TestingSession.testSessionBuilder;
 import static java.lang.String.format;
 
 @Test(singleThreaded = true)
-public class TestIcebergFileMetastoreTableOperationsUnlockFailure
+public class TestIcebergHiveMetastoreTableOperationsUnlockFailure
         extends AbstractTestQueryFramework
 {
     private static final String ICEBERG_CATALOG = "iceberg";
