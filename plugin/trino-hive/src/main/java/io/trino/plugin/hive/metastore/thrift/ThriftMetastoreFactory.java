@@ -30,7 +30,8 @@ public interface ThriftMetastoreFactory
         return new StaticThriftMetastoreFactory(metastore);
     }
 
-    class StaticThriftMetastoreFactory implements ThriftMetastoreFactory
+    class StaticThriftMetastoreFactory
+            implements ThriftMetastoreFactory
     {
         private final ThriftMetastore metastore;
 
