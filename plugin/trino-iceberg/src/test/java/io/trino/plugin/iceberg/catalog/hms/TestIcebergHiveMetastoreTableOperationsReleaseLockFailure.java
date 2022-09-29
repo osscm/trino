@@ -41,7 +41,7 @@ import static io.trino.testing.TestingSession.testSessionBuilder;
 import static java.lang.String.format;
 
 @Test(singleThreaded = true)
-public class TestIcebergHiveMetastoreTableOperationsUnlockFailure
+public class TestIcebergHiveMetastoreTableOperationsReleaseLockFailure
         extends AbstractTestQueryFramework
 {
     private static final String ICEBERG_CATALOG = "iceberg";
@@ -65,7 +65,7 @@ public class TestIcebergHiveMetastoreTableOperationsUnlockFailure
 
         LocalQueryRunner queryRunner = LocalQueryRunner.create(session);
 
-        ThriftMetastore thriftMetastore = createMetastoreWithUnlockFailure();
+        ThriftMetastore thriftMetastore = createMetastoreWithReleaseLockFailure();
         TestingIcebergHiveMetastoreCatalogModule testModule = new TestingIcebergHiveMetastoreCatalogModule(thriftMetastore);
         HiveMetastore metastore = testModule.getHiveMetastore();
 
@@ -84,7 +84,7 @@ public class TestIcebergHiveMetastoreTableOperationsUnlockFailure
         return queryRunner;
     }
 
-    private InMemoryThriftMetastore createMetastoreWithUnlockFailure()
+    private InMemoryThriftMetastore createMetastoreWithReleaseLockFailure()
     {
         return new InMemoryThriftMetastore(new File(baseDir + "/metastore"), new ThriftMetastoreConfig()) {
             @Override
@@ -97,7 +97,7 @@ public class TestIcebergHiveMetastoreTableOperationsUnlockFailure
             @Override
             public void releaseTableLock(long lockId)
             {
-                throw new RuntimeException("Unlock failed!");
+                throw new RuntimeException("Release table lock has failed!");
             }
 
             @Override
@@ -120,9 +120,9 @@ public class TestIcebergHiveMetastoreTableOperationsUnlockFailure
     }
 
     @Test
-    public void testUnlockFailureDoesNotCorruptTheTableMetadata()
+    public void testReleaseLockFailureDoesNotCorruptTheTableMetadata()
     {
-        String tableName = "test_unlock_failure";
+        String tableName = "test_release_lock_failure";
         getQueryRunner().execute(format("CREATE TABLE %s (a_varchar) AS VALUES ('Trino')", tableName));
         getQueryRunner().execute("INSERT INTO " + tableName + " VALUES 'rocks'");
         assertQuery("SELECT * FROM " + tableName, "VALUES 'Trino', 'rocks'");

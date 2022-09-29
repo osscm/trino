@@ -25,8 +25,6 @@ import io.trino.plugin.hive.metastore.thrift.ThriftMetastore;
 import io.trino.plugin.hive.metastore.thrift.ThriftMetastoreFactory;
 import io.trino.plugin.iceberg.catalog.IcebergTableOperationsProvider;
 import io.trino.plugin.iceberg.catalog.TrinoCatalogFactory;
-import io.trino.plugin.iceberg.catalog.hms.HiveMetastoreTableOperationsProvider;
-import io.trino.plugin.iceberg.catalog.hms.TrinoHiveCatalogFactory;
 
 import static java.util.Objects.requireNonNull;
 
