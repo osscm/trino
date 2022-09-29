@@ -84,21 +84,25 @@ public class TestIcebergFileMetastoreTableOperationsUnlockFailure
         return queryRunner;
     }
 
-    private InMemoryThriftMetastore createMetastoreWithUnlockFailure() {
+    private InMemoryThriftMetastore createMetastoreWithUnlockFailure()
+    {
         return new InMemoryThriftMetastore(new File(baseDir + "/metastore"), new ThriftMetastoreConfig()) {
             @Override
-            public long acquireTableExclusiveLock(AcidTransactionOwner transactionOwner, String queryId, String dbName, String tableName) {
+            public long acquireTableExclusiveLock(AcidTransactionOwner transactionOwner, String queryId, String dbName, String tableName)
+            {
                 // returning dummy lock
                 return 100;
             }
 
             @Override
-            public void releaseTableLock(long lockId) {
+            public void releaseTableLock(long lockId)
+            {
                 throw new RuntimeException("Unlock failed!");
             }
 
             @Override
-            public synchronized void createTable(org.apache.hadoop.hive.metastore.api.Table table) {
+            public synchronized void createTable(org.apache.hadoop.hive.metastore.api.Table table)
+            {
                 // InMemoryThriftMetastore throws an exception if the table has any privileges set
                 table.setPrivileges(null);
                 super.createTable(table);
