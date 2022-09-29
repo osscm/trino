@@ -120,7 +120,7 @@ public class TestIcebergHiveMetastoreTableOperationsReleaseLockFailure
     }
 
     @Test
-    public void testReleaseLockFailureDoesNotCorruptTheTableMetadata()
+    public void testReleaseLockFailureDoesNotCorruptTheTable()
     {
         String tableName = "test_release_lock_failure";
         getQueryRunner().execute(format("CREATE TABLE %s (a_varchar) AS VALUES ('Trino')", tableName));
