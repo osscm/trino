@@ -53,6 +53,8 @@ import io.trino.plugin.hive.parquet.ParquetPageSource;
 import io.trino.plugin.hive.parquet.ParquetReaderConfig;
 import io.trino.plugin.hive.parquet.TrinoParquetDataSource;
 import io.trino.plugin.iceberg.IcebergParquetColumnIOConverter.FieldContext;
+import io.trino.plugin.iceberg.aggregation.AggregateIcebergSplit;
+import io.trino.plugin.iceberg.aggregation.AggregatePageSource;
 import io.trino.plugin.iceberg.delete.DeleteFile;
 import io.trino.plugin.iceberg.delete.DeleteFilter;
 import io.trino.plugin.iceberg.delete.PositionDeleteFilter;
@@ -292,22 +294,36 @@ public class IcebergPageSourceProvider
                 ? fileSystem.newInputFile(split.getPath(), split.getFileSize())
                 : fileSystem.newInputFile(split.getPath());
 
-        ReaderPageSourceWithRowPositions readerPageSourceWithRowPositions = createDataPageSource(
-                session,
-                fileSystem,
-                inputfile,
-                split.getStart(),
-                split.getLength(),
-                split.getFileRecordCount(),
-                partitionSpec.specId(),
-                split.getPartitionDataJson(),
-                split.getFileFormat(),
-                SchemaParser.fromJson(table.getTableSchemaJson()),
-                requiredColumns,
-                effectivePredicate,
-                table.getNameMappingJson().map(NameMappingParser::fromJson),
-                partitionKeys);
+        Optional<ReaderColumns> columnProjections = projectColumns(requiredColumns);
+        ReaderPageSourceWithRowPositions readerPageSourceWithRowPositions = null;
+
+        if (isAggregationPushdown(requiredColumns)) {
+            AggregateIcebergSplit aggregateIcebergSplit = (AggregateIcebergSplit) split;
+            readerPageSourceWithRowPositions = new ReaderPageSourceWithRowPositions(
+                    new ReaderPageSource(new AggregatePageSource(requiredColumns, split.getPath(), aggregateIcebergSplit.getTotalCount()), columnProjections),
+                    Optional.empty(),
+                    Optional.empty());
+        }
+        else {
+            readerPageSourceWithRowPositions = createDataPageSource(
+                    session,
+                    fileSystem,
+                    inputfile,
+                    split.getStart(),
+                    split.getLength(),
+                    split.getFileRecordCount(),
+                    partitionSpec.specId(),
+                    split.getPartitionDataJson(),
+                    split.getFileFormat(),
+                    SchemaParser.fromJson(table.getTableSchemaJson()),
+                    requiredColumns,
+                    effectivePredicate,
+                    table.getNameMappingJson().map(NameMappingParser::fromJson),
+                    partitionKeys);
+        }
         ReaderPageSource dataPageSource = readerPageSourceWithRowPositions.getReaderPageSource();
+        Optional<Long> startRowPosition = readerPageSourceWithRowPositions.getStartRowPosition();
+        Optional<Long> endRowPosition = readerPageSourceWithRowPositions.getEndRowPosition();
 
         Optional<ReaderProjectionsAdapter> projectionsAdapter = dataPageSource.getReaderColumns().map(readerColumns ->
                 new ReaderProjectionsAdapter(
@@ -326,8 +342,8 @@ public class IcebergPageSourceProvider
                     tableSchema,
                     split.getPath(),
                     split.getDeletes(),
-                    readerPageSourceWithRowPositions.getStartRowPosition(),
-                    readerPageSourceWithRowPositions.getEndRowPosition());
+                    startRowPosition,
+                    endRowPosition);
             return deleteFilters.stream()
                     .map(filter -> filter.createPredicate(readColumns))
                     .reduce(RowPredicate::and);
@@ -1329,6 +1345,11 @@ public class IcebergPageSourceProvider
             return new TrinoException(ICEBERG_BAD_DATA, exception);
         }
         return new TrinoException(ICEBERG_CURSOR_ERROR, format("Failed to read Parquet file: %s", dataSourceId), exception);
+    }
+
+    private static boolean isAggregationPushdown(List<IcebergColumnHandle> columns)
+    {
+        return columns.size() == 1 && columns.get(0).isAggregationColumn();
     }
 
     public static final class ReaderPageSourceWithRowPositions

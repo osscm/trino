@@ -80,6 +80,7 @@ public final class IcebergSessionProperties
     private static final String MINIMUM_ASSIGNED_SPLIT_WEIGHT = "minimum_assigned_split_weight";
     public static final String EXPIRE_SNAPSHOTS_MIN_RETENTION = "expire_snapshots_min_retention";
     public static final String REMOVE_ORPHAN_FILES_MIN_RETENTION = "remove_orphan_files_min_retention";
+    public static final String AGGREGATION_PUSHDOWN_ENABLED = "aggregation_pushdown_enabled";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -271,6 +272,11 @@ public final class IcebergSessionProperties
                         "Minimal retention period for remove_orphan_files procedure",
                         icebergConfig.getRemoveOrphanFilesMinRetention(),
                         false))
+                .add(booleanProperty(
+                        AGGREGATION_PUSHDOWN_ENABLED,
+                        "Enable Aggregation Pushdown",
+                        icebergConfig.isAggregationPushdownEnabled(),
+                        false))
                 .build();
     }
 
@@ -445,5 +451,10 @@ public final class IcebergSessionProperties
     public static double getMinimumAssignedSplitWeight(ConnectorSession session)
     {
         return session.getProperty(MINIMUM_ASSIGNED_SPLIT_WEIGHT, Double.class);
+    }
+
+    public static boolean isAggregationPushdownEnabled(ConnectorSession session)
+    {
+        return session.getProperty(AGGREGATION_PUSHDOWN_ENABLED, Boolean.class);
     }
 }

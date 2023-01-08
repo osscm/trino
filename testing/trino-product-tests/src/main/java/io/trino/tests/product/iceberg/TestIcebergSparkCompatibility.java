@@ -1250,35 +1250,35 @@ public class TestIcebergSparkCompatibility
             QueryExecutor onTrino = onTrino();
             QueryExecutor onSpark = onSpark();
             List<Row> allInserted = executor.invokeAll(
-                    Stream.of(Engine.TRINO, Engine.SPARK)
-                            .map(engine -> (Callable<List<Row>>) () -> {
-                                List<Row> inserted = new ArrayList<>();
-                                for (int i = 0; i < insertsPerEngine; i++) {
-                                    barrier.await(20, SECONDS);
-                                    String engineName = engine.name().toLowerCase(ENGLISH);
-                                    long value = i;
-                                    switch (engine) {
-                                        case TRINO:
-                                            try {
-                                                onTrino.executeQuery(format("INSERT INTO %s VALUES ('%s', %d)", trinoTableName, engineName, value));
+                            Stream.of(Engine.TRINO, Engine.SPARK)
+                                    .map(engine -> (Callable<List<Row>>) () -> {
+                                        List<Row> inserted = new ArrayList<>();
+                                        for (int i = 0; i < insertsPerEngine; i++) {
+                                            barrier.await(20, SECONDS);
+                                            String engineName = engine.name().toLowerCase(ENGLISH);
+                                            long value = i;
+                                            switch (engine) {
+                                                case TRINO:
+                                                    try {
+                                                        onTrino.executeQuery(format("INSERT INTO %s VALUES ('%s', %d)", trinoTableName, engineName, value));
+                                                    }
+                                                    catch (QueryExecutionException queryExecutionException) {
+                                                        // failed to insert
+                                                        continue; // next loop iteration
+                                                    }
+                                                    break;
+                                                case SPARK:
+                                                    onSpark.executeQuery(format("INSERT INTO %s VALUES ('%s', %d)", sparkTableName, engineName, value));
+                                                    break;
+                                                default:
+                                                    throw new UnsupportedOperationException("Unexpected engine: " + engine);
                                             }
-                                            catch (QueryExecutionException queryExecutionException) {
-                                                // failed to insert
-                                                continue; // next loop iteration
-                                            }
-                                            break;
-                                        case SPARK:
-                                            onSpark.executeQuery(format("INSERT INTO %s VALUES ('%s', %d)", sparkTableName, engineName, value));
-                                            break;
-                                        default:
-                                            throw new UnsupportedOperationException("Unexpected engine: " + engine);
-                                    }
 
-                                    inserted.add(row(engineName, value));
-                                }
-                                return inserted;
-                            })
-                            .collect(toImmutableList())).stream()
+                                            inserted.add(row(engineName, value));
+                                        }
+                                        return inserted;
+                                    })
+                                    .collect(toImmutableList())).stream()
                     .map(MoreFutures::getDone)
                     .flatMap(List::stream)
                     .collect(toImmutableList());
@@ -1669,6 +1669,56 @@ public class TestIcebergSparkCompatibility
         expected = ImmutableList.of(row(11, 12));
         assertThat(onTrino().executeQuery("SELECT * FROM " + trinoTableName)).containsOnly(expected);
         assertThat(onSpark().executeQuery("SELECT * FROM " + sparkTableName)).containsOnly(expected);
+
+        onSpark().executeQuery("DROP TABLE " + sparkTableName);
+    }
+
+    @Test(groups = {ICEBERG, PROFILE_SPECIFIC_TESTS}, dataProvider = "testTrinoReadsWithAggregatePushdownSparkRowLevelDeletes")
+    public void testTrinoReadsWithAggregatePushdownSparkRowLevelDeletes(StorageFormat tableStorageFormat, StorageFormat deleteFileStorageFormat)
+    {
+        String tableName = format("test_trino_reads_with_aggregate_pushdown_spark_row_level_deletes_%s_%s_%s", tableStorageFormat.name(), deleteFileStorageFormat.name(), randomNameSuffix());
+        String sparkTableName = sparkTableName(tableName);
+        String trinoTableName = trinoTableName(tableName);
+
+        onSpark().executeQuery("CREATE TABLE " + sparkTableName + "(a INT, b INT) " +
+                "USING ICEBERG PARTITIONED BY (b) " +
+                "TBLPROPERTIES ('format-version'='2', 'write.delete.mode'='merge-on-read'," +
+                "'write.format.default'='" + tableStorageFormat.name() + "'," +
+                "'write.delete.format.default'='" + deleteFileStorageFormat.name() + "')");
+        onSpark().executeQuery("INSERT INTO " + sparkTableName + " VALUES (1, 2), (2, 2), (3, 2), (11, 12), (12, 12), (13, 12)");
+        // Spark inserts may create multiple files. rewrite_data_files ensures it is compacted to one file so a row level delete occurs.
+        onSpark().executeQuery("CALL " + SPARK_CATALOG + ".system.rewrite_data_files(table=>'" + TEST_SCHEMA_NAME + "." + tableName + "', options => map('min-input-files','1'))");
+        // Delete one row in a file
+        onSpark().executeQuery("DELETE FROM " + sparkTableName + " WHERE a = 13");
+        // Delete an entire partition
+        onSpark().executeQuery("DELETE FROM " + sparkTableName + " WHERE b = 2");
+
+        List<Row> expected = ImmutableList.of(row(11, 12), row(12, 12));
+
+        onTrino().executeQuery("SET SESSION iceberg.aggregation_pushdown_enabled = 'true'");
+
+        assertThat(onTrino().executeQuery("SELECT * FROM " + trinoTableName)).containsOnly(expected);
+        assertThat(onSpark().executeQuery("SELECT * FROM " + sparkTableName)).containsOnly(expected);
+
+        assertThat(onTrino().executeQuery("SELECT count(*) FROM " + trinoTableName)).containsOnly(ImmutableList.of(row(2)));
+        assertThat(onSpark().executeQuery("SELECT count(*) FROM " + sparkTableName)).containsOnly(ImmutableList.of(row(2)));
+        assertThat(onTrino().executeQuery("SELECT count(*) FROM " + trinoTableName + " WHERE b = 12")).containsOnly(ImmutableList.of(row(2)));
+        assertThat(onSpark().executeQuery("SELECT count(*) FROM " + sparkTableName + " WHERE b = 12")).containsOnly(ImmutableList.of(row(2)));
+        assertThat(onTrino().executeQuery("SELECT count(*) FROM " + trinoTableName + " WHERE a  IN (11, 12)")).containsOnly(ImmutableList.of(row(2)));
+        assertThat(onSpark().executeQuery("SELECT count(*) FROM " + sparkTableName + " WHERE a  IN (11, 12)")).containsOnly(ImmutableList.of(row(2)));
+
+        // Delete to a file that already has deleted rows
+        onSpark().executeQuery("DELETE FROM " + sparkTableName + " WHERE a = 12");
+        expected = ImmutableList.of(row(11, 12));
+        assertThat(onTrino().executeQuery("SELECT * FROM " + trinoTableName)).containsOnly(expected);
+        assertThat(onSpark().executeQuery("SELECT * FROM " + sparkTableName)).containsOnly(expected);
+
+        assertThat(onTrino().executeQuery("SELECT count(*) FROM " + trinoTableName)).containsOnly(ImmutableList.of(row(1)));
+        assertThat(onSpark().executeQuery("SELECT count(*) FROM " + sparkTableName)).containsOnly(ImmutableList.of(row(1)));
+        assertThat(onTrino().executeQuery("SELECT count(*) FROM " + trinoTableName + " WHERE b = 12")).containsOnly(ImmutableList.of(row(1)));
+        assertThat(onSpark().executeQuery("SELECT count(*) FROM " + sparkTableName + " WHERE b = 12")).containsOnly(ImmutableList.of(row(1)));
+        assertThat(onTrino().executeQuery("SELECT count(*) FROM " + trinoTableName + " WHERE a  IN (11, 12)")).containsOnly(ImmutableList.of(row(1)));
+        assertThat(onSpark().executeQuery("SELECT count(*) FROM " + sparkTableName + " WHERE a  IN (11, 12)")).containsOnly(ImmutableList.of(row(1)));
 
         onSpark().executeQuery("DROP TABLE " + sparkTableName);
     }
@@ -2303,9 +2353,9 @@ public class TestIcebergSparkCompatibility
     private void validatePartitioning(String baseTableName, String sparkTableName, List<Map<String, String>> expectedValues)
     {
         List<String> trinoResult = expectedValues.stream().map(m ->
-                m.entrySet().stream()
-                        .map(entry -> format("%s=%s", entry.getKey(), entry.getValue()))
-                        .collect(Collectors.joining(", ", "{", "}")))
+                        m.entrySet().stream()
+                                .map(entry -> format("%s=%s", entry.getKey(), entry.getValue()))
+                                .collect(Collectors.joining(", ", "{", "}")))
                 .collect(toImmutableList());
         List<Object> partitioning = onTrino().executeQuery(format("SELECT partition, record_count FROM iceberg.default.\"%s$partitions\"", baseTableName))
                 .column(1);
@@ -2313,9 +2363,9 @@ public class TestIcebergSparkCompatibility
         Assertions.assertThat(partitions.size()).isEqualTo(expectedValues.size());
         Assertions.assertThat(partitions).containsAll(trinoResult);
         List<String> sparkResult = expectedValues.stream().map(m ->
-                m.entrySet().stream()
-                        .map(entry -> format("\"%s\":%s", entry.getKey(), entry.getValue()))
-                        .collect(Collectors.joining(",", "{", "}")))
+                        m.entrySet().stream()
+                                .map(entry -> format("\"%s\":%s", entry.getKey(), entry.getValue()))
+                                .collect(Collectors.joining(",", "{", "}")))
                 .collect(toImmutableList());
         partitioning = onSpark().executeQuery(format("SELECT partition from %s.files", sparkTableName)).column(1);
         partitions = partitioning.stream().map(String::valueOf).collect(toUnmodifiableSet());

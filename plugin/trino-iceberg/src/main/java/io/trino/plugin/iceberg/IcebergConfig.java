@@ -71,6 +71,7 @@ public class IcebergConfig
     private boolean deleteSchemaLocationsFallback;
     private double minimumAssignedSplitWeight = 0.05;
     private Optional<String> materializedViewsStorageSchema = Optional.empty();
+    private boolean aggregationPushdownEnabled;
 
     public CatalogType getCatalogType()
     {
@@ -337,6 +338,18 @@ public class IcebergConfig
     public IcebergConfig setMaterializedViewsStorageSchema(String materializedViewsStorageSchema)
     {
         this.materializedViewsStorageSchema = Optional.ofNullable(materializedViewsStorageSchema);
+        return this;
+    }
+
+    public boolean isAggregationPushdownEnabled()
+    {
+        return aggregationPushdownEnabled;
+    }
+
+    @Config("iceberg.aggregation-pushdown.enabled")
+    public IcebergConfig setAggregationPushdownEnabled(boolean aggregationPushdownEnabled)
+    {
+        this.aggregationPushdownEnabled = aggregationPushdownEnabled;
         return this;
     }
 }

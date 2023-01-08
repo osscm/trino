@@ -17,6 +17,7 @@ import com.google.common.collect.ImmutableList;
 import io.airlift.units.Duration;
 import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.plugin.base.classloader.ClassLoaderSafeConnectorSplitSource;
+import io.trino.plugin.iceberg.aggregation.AggregateSplitSource;
 import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.connector.ConnectorSplitManager;
 import io.trino.spi.connector.ConnectorSplitSource;
@@ -31,6 +32,7 @@ import org.apache.iceberg.TableScan;
 
 import javax.inject.Inject;
 
+import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.trino.plugin.iceberg.IcebergSessionProperties.getDynamicFilteringWaitTimeout;
 import static io.trino.plugin.iceberg.IcebergSessionProperties.getMinimumAssignedSplitWeight;
 import static java.util.Objects.requireNonNull;
@@ -74,19 +76,49 @@ public class IcebergSplitManager
 
         TableScan tableScan = icebergTable.newScan()
                 .useSnapshot(table.getSnapshotId().get());
-        IcebergSplitSource splitSource = new IcebergSplitSource(
-                fileSystemFactory,
-                session,
-                table,
-                tableScan,
-                table.getMaxScannedFileSize(),
-                dynamicFilter,
-                dynamicFilteringWaitTimeout,
-                constraint,
-                typeManager,
-                table.isRecordScannedFiles(),
-                getMinimumAssignedSplitWeight(session));
+
+        ConnectorSplitSource splitSource = null;
+
+        if (hasAggregationPushDownColumn(table)) {
+            splitSource = new AggregateSplitSource(
+                    fileSystemFactory,
+                    session,
+                    table,
+                    tableScan,
+                    table.getMaxScannedFileSize(),
+                    dynamicFilter,
+                    dynamicFilteringWaitTimeout,
+                    constraint,
+                    typeManager,
+                    table.isRecordScannedFiles(),
+                    getMinimumAssignedSplitWeight(session));
+        }
+        else {
+            splitSource = new IcebergSplitSource(
+                    fileSystemFactory,
+                    session,
+                    table,
+                    tableScan,
+                    table.getMaxScannedFileSize(),
+                    dynamicFilter,
+                    dynamicFilteringWaitTimeout,
+                    constraint,
+                    typeManager,
+                    table.isRecordScannedFiles(),
+                    getMinimumAssignedSplitWeight(session));
+        }
 
         return new ClassLoaderSafeConnectorSplitSource(splitSource, IcebergSplitManager.class.getClassLoader());
+    }
+
+    private static boolean hasAggregationPushDownColumn(IcebergTableHandle icebergTableHandle)
+    {
+        if (icebergTableHandle.getProjectedColumns().size() != 1) {
+            return false;
+        }
+
+        return icebergTableHandle.getProjectedColumns().stream().filter(stringColumnHandleEntry -> {
+            return stringColumnHandleEntry.isAggregationColumn();
+        }).collect(toImmutableList()).size() > 0;
     }
 }

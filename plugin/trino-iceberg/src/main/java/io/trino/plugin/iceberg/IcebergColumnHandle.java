@@ -28,6 +28,7 @@ import java.util.Optional;
 
 import static io.trino.plugin.iceberg.IcebergMetadataColumn.FILE_MODIFIED_TIME;
 import static io.trino.plugin.iceberg.IcebergMetadataColumn.FILE_PATH;
+import static io.trino.plugin.iceberg.aggregation.AggregateExpression.COUNT_AGGREGATE_COLUMN_ID;
 import static java.util.Objects.requireNonNull;
 import static org.apache.iceberg.MetadataColumns.IS_DELETED;
 import static org.apache.iceberg.MetadataColumns.ROW_POSITION;
@@ -261,5 +262,10 @@ public class IcebergColumnHandle
     public boolean isPathColumn()
     {
         return getColumnIdentity().getId() == FILE_PATH.getId();
+    }
+
+    public boolean isAggregationColumn()
+    {
+        return getColumnIdentity().getId() == COUNT_AGGREGATE_COLUMN_ID;
     }
 }
